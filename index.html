@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#2563eb">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+  <title>Mon Budget</title>
+
+  <!-- Tailwind (pour le style simple) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 UMD + Babel pour JSX en direct -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="min-h-screen bg-gray-100 text-gray-900">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useEffect, useMemo, useState } = React;
+
+    /**
+     * Appli Budget – Simple
+     * 3 pages: Budget Fixe, Budget Courses, Budget Plaisir
+     * – Ajout/Suppression de lignes
+     * – Total automatique
+     * – Persistant (localStorage)
+     * – Style simple et clair
+     */
+
+    // ---------- Helpers
+    const currency = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR" });
+    const clamp2 = (v) => Math.round(Number(v || 0) * 100) / 100;
+    const parseAmount = (raw) => {
+      if (raw === null || raw === undefined) return 0;
+      const cleaned = String(raw).replace(/\s/g, "").replace(",", ".");
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // storage keys
+    const KEYS = {
+      fixe: "budget_fixe_items_simple",
+      courses: "budget_courses_items_simple",
+      plaisir: "budget_plaisir_items_simple",
+    };
+
+    function useBudgetItems(key) {
+      const [items, setItems] = useState(() => {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : [];
+        } catch (e) {
+          return [];
+        }
+      });
+      useEffect(() => {
+        localStorage.setItem(key, JSON.stringify(items));
+      }, [key, items]);
+      return [items, setItems];
+    }
+
+    function Header() {
+      return (
+        <div className="p-4 border-b bg-gray-100">
+          <h1 className="text-xl font-bold text-gray-800">Mon Budget</h1>
+        </div>
+      );
+    }
+
+    function Tabs({ current, onChange }) {
+      const tabs = [
+        { id: "fixe", label: "Budget Fixe" },
+        { id: "courses", label: "Budget Courses" },
+        { id: "plaisir", label: "Budget Plaisir" },
+      ];
+      return (
+        <div className="flex border-b">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => onChange(t.id)}
+              className={`flex-1 py-2 text-sm font-medium ${
+                current === t.id ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-700"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    function BudgetPage({ storageKey }) {
+      const [items, setItems] = useBudgetItems(storageKey);
+      const [title, setTitle] = useState("");
+      const [amount, setAmount] = useState("");
+
+      const total = useMemo(
+        () => clamp2(items.reduce((sum, it) => sum + parseAmount(it.amount), 0)),
+        [items]
+      );
+
+      function addItem() {
+        const a = clamp2(parseAmount(amount));
+        const t = String(title).trim();
+        if (!t) return;
+        const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now() + Math.random());
+        setItems((prev) => [{ id, title: t, amount: a }, ...prev]);
+        setTitle("");
+        setAmount("");
+      }
+
+      function removeItem(id) {
+        setItems((prev) => prev.filter((x) => x.id !== id));
+      }
+
+      function updateItem(id, patch) {
+        setItems((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+      }
+
+      return (
+        <div className="p-4 pb-20">
+          {/* Ajout */}
+          <div className="flex gap-2 mb-4">
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Titre"
+              className="flex-1 border p-2 rounded"
+            />
+            <input
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="Montant"
+              inputMode="decimal"
+              className="w-32 border p-2 rounded"
+            />
+            <button
+              onClick={addItem}
+              className="bg-blue-500 text-white px-3 rounded"
+              title="Ajouter"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Liste */}
+          {items.length === 0 ? (
+            <div className="text-gray-500 text-sm">Aucune ligne. Ajoute une dépense ci-dessus.</div>
+          ) : (
+            <ul className="space-y-2">
+              {items.map((it) => (
+                <li key={it.id} className="flex items-center gap-2 border p-2 rounded">
+                  <input
+                    value={it.title}
+                    onChange={(e) => updateItem(it.id, { title: e.target.value })}
+                    className="flex-1 border p-1 rounded"
+                  />
+                  <input
+                    value={String(it.amount)}
+                    onChange={(e) =>
+                      updateItem(it.id, { amount: clamp2(parseAmount(e.target.value)) })
+                    }
+                    className="w-24 border p-1 rounded text-right"
+                    inputMode="decimal"
+                  />
+                  <button
+                    onClick={() => removeItem(it.id)}
+                    className="text-red-600 px-2"
+                    title="Supprimer"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Total */}
+          <div className="fixed bottom-0 left-0 right-0 bg-blue-600 text-white p-4 font-bold flex justify-between">
+            <span>Total</span>
+            <span>{currency.format(total)}</span>
+          </div>
+        </div>
+      );
+    }
+
+    function BudgetApp() {
+      const [tab, setTab] = useState("fixe");
+
+      return (
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <Tabs current={tab} onChange={setTab} />
+          <main className="flex-1 overflow-y-auto">
+            {tab === "fixe" && <BudgetPage storageKey={KEYS.fixe} />}
+            {tab === "courses" && <BudgetPage storageKey={KEYS.courses} />}
+            {tab === "plaisir" && <BudgetPage storageKey={KEYS.plaisir} />}
+          </main>
+        </div>
+      );
+    }
+
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<BudgetApp />);
+  </script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch(console.error);
+      });
+    }
+  </script>
+  
+</body>
+</html>
